@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Agenda Studio Barber</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Firebase v8 (compatible sin módulos) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f4f4f4;
+      padding: 2rem;
+    }
+    form {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 10px;
+      max-width: 500px;
+      margin: 0 auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+    }
+    input, select {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.25rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      margin-top: 1.5rem;
+      width: 100%;
+      padding: 0.75rem;
+      background-color: #00c853;
+      border: none;
+      color: white;
+      font-size: 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #mensajeConfirmacion {
+      background-color: #dcedc8;
+      border: 1px solid #aed581;
+      padding: 1rem;
+      margin-top: 1rem;
+      text-align: center;
+      border-radius: 5px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <form id="turnoForm">
+    <h2>Reservá tu turno</h2>
+    <label for="nombre">Nombre *</label>
+    <input id="nombre" type="text" required>
+
+    <label for="telefono">Teléfono *</label>
+    <input id="telefono" type="tel" required>
+
+    <label for="fecha">Fecha *</label>
+    <input id="fecha" type="date" required>
+
+    <label for="hora">Hora *</label>
+    <select id="hora" required disabled>
+      <option value="">Seleccioná una fecha primero</option>
+    </select>
+
+    <button type="submit">Reservar turno</button>
+    <div id="mensajeConfirmacion">¡Turno reservado con éxito!</div>
+  </form>
+
+  <script>
+    // Configuración de Firebase
+    var firebaseConfig = {
+      apiKey: "AIzaSyCev6Dd5nIAWrTw0lXIWldqus2LTKrfOps",
+      authDomain: "agenda-studio-barber-12.firebaseapp.com",
+      databaseURL: "https://agenda-studio-barber-12-default-rtdb.firebaseio.com",
+      projectId: "agenda-studio-barber-12",
+      storageBucket: "agenda-studio-barber-12.firebasestorage.app",
+      messagingSenderId: "296760389286",
+      appId: "1:296760389286:web:849cc66fad871cabc28e67",
+      measurementId: "G-SGEKDXEYMS"
+    };
+
+    // Inicializar Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const form = document.getElementById('turnoForm');
+    const confirmacion = document.getElementById('mensajeConfirmacion');
+    const selectHora = document.getElementById('hora');
+    const fechaInput = document.getElementById('fecha');
+
+    // Establecer fecha mínima como mañana
+    const mañana = new Date();
+    mañana.setDate(mañana.getDate() + 1);
+    fechaInput.min = mañana.toISOString().split('T')[0];
+
+    fechaInput.addEventListener('change', () => {
+      const fecha = fechaInput.value;
+      if (!fecha) return;
+      cargarHorasDisponibles(fecha);
+    });
+
+    function cargarHorasDisponibles(fecha) {
+      selectHora.innerHTML = '';
+      selectHora.disabled = true;
+
+      const horas = ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+      const ahora = new Date();
+
+      db.ref(`turnos/${fecha}`).once('value')
+        .then(snapshot => {
+          const turnos = snapshot.val() || {};
+          let disponibles = 0;
+
+          horas.forEach(hora => {
+            const fechaHora = new Date(`${fecha}T${hora}:00`);
+            const horasDiferencia = (fechaHora - ahora) / (1000 * 60 * 60);
+
+            if (!turnos[hora] && horasDiferencia >= 12) {
+              const option = document.createElement('option');
+              option.value = hora;
+              option.textContent = hora;
+              selectHora.appendChild(option);
+              disponibles++;
+            }
+          });
+
+          if (disponibles === 0) {
+            const option = document.createElement('option');
+            option.textContent = 'No hay horarios con 12h de anticipación';
+            option.disabled = true;
+            option.selected = true;
+            selectHora.appendChild(option);
+          } else {
+            selectHora.disabled = false;
+          }
+        });
+    }
+
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+
+      const nombre = document.getElementById('nombre').value.trim();
+      const telefono = document.getElementById('telefono').value.trim();
+      const fecha = fechaInput.value;
+      const hora = selectHora.value;
+      const numeroPeluquero = "5493521630171"; // Cambiar por tu número real
+
+      if (!fecha || !hora) {
+        alert("Seleccioná una fecha y hora válidas.");
+        return;
+      }
+
+      const fechaHora = new Date(`${fecha}T${hora}:00`);
+      const ahora = new Date();
+      const horasDiferencia = (fechaHora - ahora) / (1000 * 60 * 60);
+
+      if (horasDiferencia < 12) {
+        alert("Debés reservar con al menos 12 horas de anticipación.");
+        return;
+      }
+
+      const turno = { nombre, telefono, fecha, hora, timestamp: Date.now() };
+
+      db.ref(`turnos/${fecha}/${hora}`).set(turno)
+        .then(() => {
+          const mensaje = `Hola, soy ${nombre}. Reservé un turno para el ${fecha} a las ${hora}hs (corte de pelo).`;
+
+          confirmacion.style.display = 'block';
+
+          setTimeout(() => {
+            window.open(`https://wa.me/${numeroPeluquero}?text=${encodeURIComponent(mensaje)}`, '_blank');
+            form.reset();
+            selectHora.innerHTML = '<option value="">Seleccioná una fecha primero</option>';
+            selectHora.disabled = true;
+            confirmacion.style.display = 'none';
+          }, 1500);
+        })
+        .catch(err => {
+          console.error("Error:", err);
+          alert("Error al guardar el turno.");
+        });
+    });
+  </script>
+</body>
+</html>
